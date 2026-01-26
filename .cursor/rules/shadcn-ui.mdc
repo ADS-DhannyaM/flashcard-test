@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+# shadcn UI Usage
+
+This project uses **shadcn UI** for all UI elements and components.
+
+## Initialization
+
+If shadcn UI is not initialized in the project, initialize it using:
+
+```bash
+npx shadcn@latest init
+```
+
+## Adding Components
+
+When a specific shadcn UI component is needed but not yet installed, add it using:
+
+```bash
+npx shadcn@latest add <component-name>
+```
+
+For example, to install the button component:
+```bash
+npx shadcn@latest add button
+```
+
+## Guidelines
+
+- Always use shadcn UI components instead of creating custom UI elements from scratch
+- Check if a component exists before creating a new one
+- Follow shadcn UI patterns and conventions when implementing UI features
+- Components are typically located in the `components/ui` directory after installation
