@@ -1,0 +1,100 @@
+---
+description: Server components for data; server actions for mutations; Zod for validation
+alwaysApply: true
+---
+
+# Server Data & Validation
+
+Data flow and validation in this project follow strict conventions.
+
+## Rules
+
+1. **Data retrieval:** Always do it in **server components**. Fetch or query data (e.g. via Drizzle) only in server components or in code they call. Do not fetch app data in client components (no `useEffect` + fetch for primary data).
+2. **Mutations (insert / update / delete):** Always do them via **server actions** only. Mark mutation logic with `"use server"` and call it from the client (e.g. form actions or event handlers). Do **not** perform inserts/updates/deletes from client components. Do **not** perform mutations via API routes (e.g. `app/api/**/route.ts` handlers that do DB writes in response to POST/PUT/PATCH/DELETE). Use server actions for all mutations; do not use API routes for mutations.
+3. **Validation:** Always use **Zod** for validating input. Define schemas with `z.object()`, `z.string()`, etc., and validate before using data in server actions or server components.
+4. **Server action arguments:**  
+   - Must have an explicit **TypeScript type** (e.g. `params: { deckId: number; name: string }`).  
+   - Must be **validated with Zod** inside the action (e.g. `schema.parse(params)` or `schema.safeParse(params)`).  
+   - **Do not** use `FormData` as the type of a server action parameter. If you need form data, parse it in the action into a plain object, define a Zod schema and TypeScript type for that object, then validate and use it.
+
+## Examples
+
+```typescript
+// ✅ GOOD – server action with typed, Zod-validated input
+"use server";
+
+import { z } from "zod";
+
+const createDeckSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().max(500).optional(),
+});
+
+type CreateDeckInput = z.infer<typeof createDeckSchema>;
+
+export async function createDeck(input: CreateDeckInput) {
+  const parsed = createDeckSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.flatten() };
+  }
+  const { name, description } = parsed.data;
+  // ... insert via Drizzle using name, description
+}
+```
+
+```typescript
+// ✅ GOOD – server component fetching data
+import { db } from "@/src/db";
+import { decksTable } from "@/src/db/schema";
+import { eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
+
+export default async function DecksPage() {
+  const { userId } = await auth();
+  if (!userId) return null;
+  const decks = await db.select().from(decksTable).where(eq(decksTable.userId, userId));
+  return <DecksList decks={decks} />;
+}
+```
+
+```typescript
+// ❌ BAD – FormData as the type
+export async function createDeck(formData: FormData) {
+  const name = formData.get("name"); // untyped, not Zod-validated
+}
+```
+
+```typescript
+// ❌ BAD – mutation in client component
+"use client";
+function CreateDeck() {
+  async function handleSubmit() {
+    await db.insert(decksTable).values({ ... }); // do not mutate from client
+  }
+}
+```
+
+```typescript
+// ❌ BAD – fetching app data in client component
+"use client";
+function DecksList() {
+  const [decks, setDecks] = useState([]);
+  useEffect(() => {
+    fetch("/api/decks").then(...); // fetch in server component instead
+  }, []);
+}
+```
+
+```typescript
+// ❌ BAD – mutation via API route (use a server action instead)
+// app/api/decks/route.ts
+import { NextResponse } from "next/server";
+import { db } from "@/src/db";
+import { decksTable } from "@/src/db/schema";
+
+export async function POST(request: Request) {
+  const body = await request.json();
+  await db.insert(decksTable).values({ userId: body.userId, name: body.name });
+  return NextResponse.json({ ok: true });
+}
+```

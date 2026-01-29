@@ -1,0 +1,40 @@
+---
+description: Database interactions must use Drizzle schema and queries
+alwaysApply: true
+---
+
+# Drizzle Database Rule
+
+All database interactions in this project **must** use the Drizzle schema and Drizzle's query API. Do not use raw SQL strings or other ORMs for data access.
+
+## Schema
+
+- Define and read tables from [src/db/schema.ts](mdc:src/db/schema.ts).
+- Use the exported table definitions (`decksTable`, `cardsTable`) for every insert, select, update, and delete.
+
+## Requirements
+
+1. **Imports**: Import table definitions and operators from the schema and `drizzle-orm` (e.g. `eq`, `and`, `desc`).
+2. **Queries**: Use Drizzle's API: `db.select()`, `db.insert()`, `db.update()`, `db.delete()` with schema tables.
+3. **Types**: Use `typeof table.$inferSelect` and `typeof table.$inferInsert` for type-safe payloads when needed.
+4. **Raw SQL**: Use raw SQL only when Drizzle cannot express the operation (e.g. complex analytics). Prefer the query builder.
+
+## Examples
+
+```typescript
+// ✅ GOOD – schema tables and Drizzle API
+import { drizzle } from 'drizzle-orm/neon-http';
+import { decksTable, cardsTable } from '@/src/db/schema';
+import { eq, and } from 'drizzle-orm';
+
+const db = drizzle(process.env.DATABASE_URL!);
+
+const decks = await db.select().from(decksTable).where(eq(decksTable.userId, userId));
+await db.insert(cardsTable).values({ deckId, front: 'Dog', back: 'Anjing' });
+```
+
+```typescript
+// ❌ BAD – raw SQL for normal CRUD
+await db.execute(sql`SELECT * FROM decks WHERE user_id = ${userId}`);
+await db.execute(sql`INSERT INTO cards (deck_id, front, back) VALUES (${deckId}, 'Dog', 'Anjing')`);
+```

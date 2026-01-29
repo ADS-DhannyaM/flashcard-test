@@ -1,0 +1,54 @@
+---
+description: Auth is Clerk; users may only access their own data
+alwaysApply: true
+---
+
+# Clerk Auth & Data Access
+
+All authentication is handled by **Clerk**. There is no custom users table. Users must only ever access data that belongs to them.
+
+## Rules
+
+1. **Resolve the current user on the server.** Use Clerk’s server APIs (e.g. `auth()` from `@clerk/nextjs/server`) to get the signed-in user. Never trust a client-provided `userId` or use it for authorization.
+2. **Scoping by owner.** User-owned data is tied to `userId` (Clerk user id). In [src/db/schema.ts](mdc:src/db/schema.ts), decks have `userId`; cards are owned indirectly via their deck.
+3. **Every query must enforce ownership:**
+   - **Decks:** Filter by `userId` from `auth()`. On create, set `userId` from the current user. On read/update/delete, include `where(eq(decksTable.userId, userId))` (or equivalent).
+   - **Cards:** Only allow access to cards in decks that belong to the current user. Before any card read/update/delete (or when resolving a deck by id), ensure the deck’s `userId` matches the current user.
+4. **Fail closed.** If there is no signed-in user (`userId` is null/undefined), do not return or modify any user data. Return 401/403 or redirect to sign-in as appropriate.
+
+## Examples
+
+```typescript
+// ✅ GOOD – userId from Clerk, filter by it
+import { auth } from '@clerk/nextjs/server';
+import { db } from '@/src/db';
+import { decksTable } from '@/src/db/schema';
+import { eq, and } from 'drizzle-orm';
+
+const { userId } = await auth();
+if (!userId) return null; // or throw / 401
+
+const decks = await db.select().from(decksTable).where(eq(decksTable.userId, userId));
+await db.insert(decksTable).values({ userId, name: 'My Deck', description: '...' });
+```
+
+```typescript
+// ✅ GOOD – card access only after verifying deck ownership
+const [deck] = await db
+  .select()
+  .from(decksTable)
+  .where(and(eq(decksTable.id, deckId), eq(decksTable.userId, userId)));
+if (!deck) return null; // deck not found or not owned
+
+// Now safe to read/update/delete cards for deck.id
+```
+
+```typescript
+// ❌ BAD – trusting client-provided userId
+const decks = await db.select().from(decksTable).where(eq(decksTable.userId, params.userId));
+```
+
+```typescript
+// ❌ BAD – returning a deck by id without checking ownership
+const deck = await db.select().from(decksTable).where(eq(decksTable.id, deckId));
+```
